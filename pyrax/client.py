@@ -27,13 +27,15 @@ from __future__ import absolute_import
 
 import json
 import logging
+from pyrax.exceptions import from_response, ServiceNotAvailable, Unauthorized
 import requests
 import time
 import urllib
 from six.moves.urllib import parse as urlparse
+from pyrax import http
 
 import pyrax
-import pyrax.exceptions as exc
+
 
 SAFE_QUOTE_CHARS = "/.?&=,"
 
@@ -167,9 +169,9 @@ class BaseClient(object):
         kwargs["headers"]["Accept"] = "application/json"
         # Allow subclasses to add their own headers
         self._add_custom_headers(kwargs["headers"])
-        resp, body = pyrax.http.request(method, uri, *args, **kwargs)
+        resp, body = http.request(method, uri, *args, **kwargs)
         if resp.status_code >= 400:
-            raise exc.from_response(resp, body)
+            raise from_response(resp, body)
         return resp, body
 
 
@@ -195,7 +197,7 @@ class BaseClient(object):
         if not self.management_url:
             # We've authenticated but no management_url has been set. This
             # indicates that the service is not available.
-            raise exc.ServiceNotAvailable("The '%s' service is not available."
+            raise ServiceNotAvailable("The '%s' service is not available."
                     % self)
         if uri.startswith("http"):
             parsed = list(urlparse.urlparse(uri))
@@ -217,13 +219,13 @@ class BaseClient(object):
                 kwargs["headers"]["X-Auth-Project-Id"] = id_svc.tenant_id
             resp, body = self._time_request(safe_uri, method, **kwargs)
             return resp, body
-        except exc.Unauthorized as ex:
+        except Unauthorized as ex:
             try:
                 id_svc.authenticate()
                 kwargs["headers"]["X-Auth-Token"] = id_svc.token
                 resp, body = self._time_request(safe_uri, method, **kwargs)
                 return resp, body
-            except exc.Unauthorized:
+            except Unauthorized:
                 raise ex
 
 

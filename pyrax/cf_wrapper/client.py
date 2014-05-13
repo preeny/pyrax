@@ -7,6 +7,8 @@ from functools import wraps
 import hashlib
 import hmac
 # Use eventlet if available
+from pyrax.exceptions import NoSuchContainer, NoSuchObject, UploadFailed, InvalidTemporaryURLMethod, MissingTemporaryURLKey, UnicodePathError, InvalidCDNMetadata, FileNotFound, InvalidUploadID, FolderNotFound, MissingName, CDNFailed, NotCDNEnabled
+
 try:
     import eventlet.green.httplib as httplib
 except ImportError:
@@ -29,8 +31,7 @@ from swiftclient import client as _swift_client
 import pyrax
 from pyrax.cf_wrapper.container import Container
 from pyrax.cf_wrapper.storage_object import StorageObject
-import pyrax.utils as utils
-import pyrax.exceptions as exc
+from pyrax import pyrax_utils as utils
 
 
 EARLY_DATE_STR = "1900-01-01T00:00:00"
@@ -64,6 +65,13 @@ def _close_swiftclient_conn(conn):
 def handle_swiftclient_exception(fnc):
     @wraps(fnc)
     def _wrapped(self, *args, **kwargs):
+        """
+
+        @param self:
+        @param args:
+        @param kwargs:
+        @return: @raise:
+        """
         attempts = 0
         clt_url = self.connection.url
 
@@ -87,16 +95,16 @@ def handle_swiftclient_exception(fnc):
                 elif e.http_status == 404:
                     bad_container = no_such_container_pattern.search(str_error)
                     if bad_container:
-                        raise exc.NoSuchContainer("Container '%s' doesn't exist"
+                        raise NoSuchContainer("Container '%s' doesn't exist"
                                 % bad_container.groups()[0])
                     bad_object = no_such_object_pattern.search(str_error)
                     if bad_object:
-                        raise exc.NoSuchObject("Object '%s' doesn't exist" %
+                        raise NoSuchObject("Object '%s' doesn't exist" %
                                 bad_object.groups()[0])
                 failed_upload = etag_failed_pattern.search(str_error)
                 if failed_upload:
                     cont, fname = failed_upload.groups()
-                    raise exc.UploadFailed("Upload of file '%(fname)s' to "
+                    raise UploadFailed("Upload of file '%(fname)s' to "
                             "container '%(cont)s' failed." % locals())
                 # Not handled; re-raise
                 raise
@@ -316,12 +324,12 @@ class CFClient(object):
         oname = self._resolve_name(obj)
         mod_method = method.upper().strip()
         if mod_method not in ("GET", "PUT"):
-            raise exc.InvalidTemporaryURLMethod("Method must be either 'GET' "
+            raise InvalidTemporaryURLMethod("Method must be either 'GET' "
                     "or 'PUT'; received '%s'." % method)
         if not key:
             key = self.get_temp_url_key(cached=cached)
         if not key:
-            raise exc.MissingTemporaryURLKey("You must set the key for "
+            raise MissingTemporaryURLKey("You must set the key for "
                     "Temporary URLs before you can generate them. This is "
                     "done via the `set_temp_url_key()` method.")
         conn_url = self.connection.url
@@ -337,7 +345,7 @@ class CFClient(object):
         try:
             sig = hmac.new(key, hmac_body, hashlib.sha1).hexdigest()
         except TypeError as e:
-            raise exc.UnicodePathError("Due to a bug in Python, the TempURL "
+            raise UnicodePathError("Due to a bug in Python, the TempURL "
                     "function only works with ASCII object paths.")
         temp_url = "%s%s?temp_url_sig=%s&temp_url_expires=%s" % (base_url, pth,
                 sig, expires)
@@ -455,7 +463,7 @@ class CFClient(object):
                 continue
             hdrs[mkey] = str(mval)
         if bad:
-            raise exc.InvalidCDNMetadata("The only CDN metadata you can "
+            raise InvalidCDNMetadata("The only CDN metadata you can "
                     "update are: X-Log-Retention, X-CDN-enabled, and X-TTL. "
                     "Received the following illegal item(s): %s" %
                     ", ".join(bad))
@@ -807,7 +815,7 @@ class CFClient(object):
         if ispath:
             # Make sure it exists
             if not os.path.exists(file_or_path):
-                raise exc.FileNotFound("The file '%s' does not exist" %
+                raise FileNotFound("The file '%s' does not exist" %
                         file_or_path)
             fname = os.path.basename(file_or_path)
         else:
@@ -878,7 +886,7 @@ class CFClient(object):
         after that number of seconds.
         """
         if not os.path.isdir(folder_path):
-            raise exc.FolderNotFound("No such folder: '%s'" % folder_path)
+            raise FolderNotFound("No such folder: '%s'" % folder_path)
 
         ignore = utils.coerce_string_to_list(ignore)
         total_bytes = utils.folder_size(folder_path, ignore)
@@ -1036,7 +1044,7 @@ class CFClient(object):
             try:
                 self.folder_upload_status[upload_key]
             except KeyError:
-                raise exc.InvalidUploadID("There is no folder upload with the "
+                raise InvalidUploadID("There is no folder upload with the "
                         "key '%s'." % upload_key)
             return fnc(self, upload_key, *args, **kwargs)
         return wrapped
@@ -1129,7 +1137,7 @@ class CFClient(object):
         created, pass `structure=False` in the parameters.
         """
         if not os.path.isdir(directory):
-            raise exc.FolderNotFound("The directory '%s' does not exist." %
+            raise FolderNotFound("The directory '%s' does not exist." %
                     directory)
         obj_name = self._resolve_name(obj)
         path, fname = os.path.split(obj_name)
@@ -1162,7 +1170,7 @@ class CFClient(object):
         """
         cname = self._resolve_name(container)
         if not cname:
-            raise exc.MissingName("No container name specified")
+            raise MissingName("No container name specified")
         cont = None
         if cached:
             cont = self._container_cache.get(cname)
@@ -1272,7 +1280,7 @@ class CFClient(object):
         response = self.connection.cdn_request("GET", [""])
         status = response.status
         if not 200 <= status < 300:
-            raise exc.CDNFailed("Bad response: (%s) %s" % (status,
+            raise CDNFailed("Bad response: (%s) %s" % (status,
                     response.reason))
         return response.read().splitlines()
 
@@ -1302,7 +1310,7 @@ class CFClient(object):
         response = self.connection.cdn_request(mthd, [ct.name], hdrs=hdrs)
         status = response.status
         if not 200 <= status < 300:
-            raise exc.CDNFailed("Bad response: (%s) %s" % (status,
+            raise CDNFailed("Bad response: (%s) %s" % (status,
                     response.reason))
         ct.cdn_ttl = ttl
         for hdr in response.getheaders():
@@ -1330,7 +1338,7 @@ class CFClient(object):
         response = self.connection.cdn_request("POST", [cname], hdrs=hdrs)
         status = response.status
         if not 200 <= status < 300:
-            raise exc.CDNFailed("Bad response: (%s) %s" % (status,
+            raise CDNFailed("Bad response: (%s) %s" % (status,
                     response.reason))
         # Read the response to force it to close for the next request.
         response.read()
@@ -1379,7 +1387,7 @@ class CFClient(object):
         ct = self.get_container(container)
         oname = self._resolve_name(name)
         if not ct.cdn_enabled:
-            raise exc.NotCDNEnabled("The object '%s' is not in a "
+            raise NotCDNEnabled("The object '%s' is not in a "
                     "CDN-enabled container." % oname)
         hdrs = {}
         if email_addresses:

@@ -21,7 +21,7 @@ from pyrax.client import BaseClient
 import pyrax.exceptions as exc
 from pyrax.manager import BaseManager
 from pyrax.resource import BaseResource
-import pyrax.utils as utils
+from pyrax import pyrax_utils as utils
 
 # Constants to represent the 'special' network IDs.
 PUBLIC_NET_ID = "00000000-0000-0000-0000-000000000000"

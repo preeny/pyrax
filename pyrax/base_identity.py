@@ -8,6 +8,7 @@ import six.moves.configparser as ConfigParser
 import datetime
 import json
 import re
+from pyrax.exceptions import NoEndpointForRegion, NoClientForService, NoEndpointForService, NotAuthenticated, NoSuchClient, FileNotFound, InvalidCredentialFile, AuthenticationFailed
 import requests
 
 try:
@@ -16,9 +17,9 @@ except ImportError:
     keyring = None
 
 import pyrax
-from . import exceptions as exc
-from .resource import BaseResource
-from . import utils
+from pyrax.resource import BaseResource
+from pyrax import pyrax_utils as utils
+from pyrax import http
 
 
 _pat = r"""
@@ -120,7 +121,7 @@ class Service(object):
         """
         ep = self._ep_for_region(region)
         if not ep:
-            raise exc.NoEndpointForRegion("There is no endpoint defined for the "
+            raise NoEndpointForRegion("There is no endpoint defined for the "
                     "region '%s' for the '%s' service." % (region,
                     self.service_type))
         return ep.client
@@ -167,7 +168,7 @@ class Endpoint(object):
     def _get_client(self, public=True):
         client_att = "_client" if public else "_client_private"
         clt = getattr(self, client_att)
-        if isinstance(clt, exc.NoClientForService):
+        if isinstance(clt, NoClientForService):
             # Already failed
             raise clt
         if clt is not None:
@@ -175,14 +176,14 @@ class Endpoint(object):
         # Create the client
         clt_class = pyrax.client_class_for_service(self.service)
         if clt_class is None:
-            noclass = exc.NoClientForService("No client for the '%s' service "
+            noclass = NoClientForService("No client for the '%s' service "
                     "has been registered." % self.service)
             setattr(self, client_att, noclass)
             raise noclass
         url_att = "public_url" if public else "private_url"
         url = getattr(self, url_att)
         if not url:
-            nourl = exc.NoEndpointForService("No %s endpoint is available for "
+            nourl = NoEndpointForService("No %s endpoint is available for "
                     "the '%s' service." % (url_att, self.service))
             setattr(self, client_att, nourl)
             raise nourl
@@ -347,7 +348,7 @@ class BaseIdentity(object):
         region should be returned.
         """
         if not self.authenticated:
-            raise exc.NotAuthenticated("Authentication required before "
+            raise NotAuthenticated("Authentication required before "
                     "accessing the context.")
         # First see if it's a service
         att = self.service_mapping.get(att) or att
@@ -380,7 +381,7 @@ class BaseIdentity(object):
         if ep:
             clt = ep.client if public else ep.client_private
         if not clt:
-            raise exc.NoSuchClient("There is no client available for the "
+            raise NoSuchClient("There is no client available for the "
                     "service '%s' in the region '%s'." % (service, region))
         return clt
 
@@ -415,15 +416,15 @@ class BaseIdentity(object):
             if not cfg.read(credential_file):
                 # If the specified file does not exist, the parser returns an
                 # empty list.
-                raise exc.FileNotFound("The specified credential file '%s' "
+                raise FileNotFound("The specified credential file '%s' "
                         "does not exist" % credential_file)
         except ConfigParser.MissingSectionHeaderError as e:
             # The file exists, but doesn't have the correct format.
-            raise exc.InvalidCredentialFile(e)
+            raise InvalidCredentialFile(e)
         try:
             self._read_credential_file(cfg)
         except (ConfigParser.NoSectionError, ConfigParser.NoOptionError) as e:
-            raise exc.InvalidCredentialFile(e)
+            raise InvalidCredentialFile(e)
         if region:
             self.region = region
         if authenticate:
@@ -463,11 +464,11 @@ class BaseIdentity(object):
                 std_headers=False)
         if resp.status_code == 401:
             # Invalid authorization
-            raise exc.AuthenticationFailed("Incorrect/unauthorized "
+            raise AuthenticationFailed("Incorrect/unauthorized "
                     "credentials received")
         elif resp.status_code > 299:
             msg = resp_body[resp_body.keys()[0]]["message"]
-            raise exc.AuthenticationFailed("%s - %s." % (resp.reason, msg))
+            raise AuthenticationFailed("%s - %s." % (resp.reason, msg))
         return resp, resp_body
 
 
@@ -544,7 +545,7 @@ class BaseIdentity(object):
         if "tokens" in uri:
             # We'll handle the exception here
             kwargs["raise_exception"] = False
-        return pyrax.http.request(mthd, uri, **kwargs)
+        return http.request(mthd, uri, **kwargs)
 
 
     def authenticate(self, username=None, password=None, api_key=None,

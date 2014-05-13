@@ -19,15 +19,15 @@
 
 from functools import wraps
 import time
+from pyrax.exceptions import VolumeAttachmentFailed, VolumeDetachmentFailed, VolumeNotAvailable, InvalidSize, BadRequest, VolumeCloneTooSmall, ClientException, SnapshotNotAvailable
 
 import six
 
 import pyrax
 from pyrax.client import BaseClient
-import pyrax.exceptions as exc
 from pyrax.manager import BaseManager
 from pyrax.resource import BaseResource
-import pyrax.utils as utils
+from pyrax import pyrax_utils as utils
 
 
 MIN_SIZE = 100
@@ -82,7 +82,7 @@ class CloudBlockStorageSnapshot(BaseResource):
         Adds a check to make sure that the snapshot is able to be deleted.
         """
         if self.status not in ("available", "error"):
-            raise exc.SnapshotNotAvailable("Snapshot must be in 'available' "
+            raise SnapshotNotAvailable("Snapshot must be in 'available' "
                     "or 'error' status before deleting. Current status: %s" %
                     self.status)
         # When there are more thann one snapshot for a given volume, attempting to
@@ -90,7 +90,7 @@ class CloudBlockStorageSnapshot(BaseResource):
         # such an error once after a RETRY_INTERVAL second delay.
         try:
             super(CloudBlockStorageSnapshot, self).delete()
-        except exc.ClientException as e:
+        except ClientException as e:
             if "Request conflicts with in-progress 'DELETE" in str(e):
                 time.sleep(RETRY_INTERVAL)
                 # Try again; if it fails, oh, well...
@@ -146,7 +146,7 @@ class CloudBlockStorageVolume(BaseResource):
             resp = self._nova_volumes.create_server_volume(instance_id,
                     self.id, mountpoint)
         except Exception as e:
-            raise exc.VolumeAttachmentFailed("%s" % e)
+            raise VolumeAttachmentFailed("%s" % e)
 
 
     def detach(self):
@@ -166,7 +166,7 @@ class CloudBlockStorageVolume(BaseResource):
         try:
             self._nova_volumes.delete_server_volume(instance_id, attachment_id)
         except Exception as e:
-            raise exc.VolumeDetachmentFailed("%s" % e)
+            raise VolumeDetachmentFailed("%s" % e)
 
 
     def delete(self, force=False):
@@ -182,7 +182,7 @@ class CloudBlockStorageVolume(BaseResource):
             self.delete_all_snapshots()
         try:
             super(CloudBlockStorageVolume, self).delete()
-        except exc.VolumeNotAvailable:
+        except VolumeNotAvailable:
             # Notify the user? Record it somewhere?
             # For now, just re-raise
             raise
@@ -252,7 +252,7 @@ class CloudBlockStorageManager(BaseManager):
         """
         if not isinstance(size, (int, long)) or not (
                 MIN_SIZE <= size <= MAX_SIZE):
-            raise exc.InvalidSize("Volume sizes must be integers between "
+            raise InvalidSize("Volume sizes must be integers between "
                     "%s and %s." % (MIN_SIZE, MAX_SIZE))
         if volume_type is None:
             volume_type = "SATA"
@@ -281,10 +281,10 @@ class CloudBlockStorageManager(BaseManager):
         try:
             return super(CloudBlockStorageManager, self).create(*args,
                     **kwargs)
-        except exc.BadRequest as e:
+        except BadRequest as e:
             msg = e.message
             if "Clones currently must be >= original volume size" in msg:
-                raise exc.VolumeCloneTooSmall(msg)
+                raise VolumeCloneTooSmall(msg)
             else:
                 raise
 
@@ -350,24 +350,24 @@ class CloudBlockStorageSnapshotManager(BaseManager):
             snap = super(CloudBlockStorageSnapshotManager, self).create(
                     name=name, volume=volume, description=description,
                     force=force)
-        except exc.BadRequest as e:
+        except BadRequest as e:
             msg = str(e)
             if "Invalid volume: must be available" in msg:
                 # The volume for the snapshot was attached.
-                raise exc.VolumeNotAvailable("Cannot create a snapshot from an "
+                raise VolumeNotAvailable("Cannot create a snapshot from an "
                         "attached volume. Detach the volume before trying "
                         "again, or pass 'force=True' to the create_snapshot() "
                         "call.")
             else:
                 # Some other error
                 raise
-        except exc.ClientException as e:
+        except ClientException as e:
             if e.code == 409:
                 if "Request conflicts with in-progress" in str(e):
                     txt = ("The volume is current creating a snapshot. You "
                             "must wait until that completes before attempting "
                             "to create an additional snapshot.")
-                    raise exc.VolumeNotAvailable(txt)
+                    raise VolumeNotAvailable(txt)
                 else:
                     raise
             else:

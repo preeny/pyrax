@@ -5,11 +5,11 @@ from __future__ import absolute_import
 
 from six.moves import configparser as ConfigParser
 
-import pyrax
-from ..base_identity import BaseIdentity
-from ..base_identity import User
-from .. import exceptions as exc
-from .. import utils as utils
+from pyrax import *
+from pyrax.base_identity import BaseIdentity
+from pyrax.base_identity import User
+from pyrax.exceptions import AuthenticationFailed, NotFound, AuthorizationFailure
+from pyrax import pyrax_utils as utils
 
 AUTH_ENDPOINT = "https://identity.api.rackspacecloud.com/v2.0/"
 
@@ -66,7 +66,7 @@ class RaxIdentity(BaseIdentity):
         try:
             super(RaxIdentity, self).authenticate(username=username,
                     password=password, api_key=api_key, tenant_id=tenant_id)
-        except exc.AuthenticationFailed:
+        except AuthenticationFailed:
             self._creds_style = "password"
             super(RaxIdentity, self).authenticate(username=username,
                     password=password, api_key=api_key, tenant_id=tenant_id)
@@ -159,7 +159,7 @@ class RaxIdentity(BaseIdentity):
                     "'username', or 'email' when calling get_user().")
         resp, resp_body = self.method_get(uri)
         if resp.status_code == 404:
-            raise exc.NotFound("No such user exists.")
+            raise NotFound("No such user exists.")
         users = resp_body.get("users", [])
         if users:
             return [User(self, user) for user in users]
@@ -168,7 +168,7 @@ class RaxIdentity(BaseIdentity):
             if user:
                 return User(self, user)
             else:
-                raise exc.NotFound("No such user exists.")
+                raise NotFound("No such user exists.")
 
 
     def update_user(self, user, email=None, username=None,
@@ -190,7 +190,7 @@ class RaxIdentity(BaseIdentity):
         data = {"user": upd}
         resp, resp_body = self.method_put(uri, data=data)
         if resp.status_code in (401, 403, 404):
-            raise exc.AuthorizationFailure("You are not authorized to update "
+            raise AuthorizationFailure("You are not authorized to update "
                     "users.")
         return User(self, resp_body)
 

@@ -45,6 +45,9 @@ import six.moves.configparser as ConfigParser
 import warnings
 
 # keyring is an optional import
+from pyrax.exceptions import EnvironmentNotFound, InvalidConfigurationFile, IdentityClassNotDefined, KeyringUsernameMissing, KeyringPasswordNotFound, InvalidSetting, NotAuthenticated, KeyringModuleNotInstalled
+from pyrax.pyrax_utils import import_class
+
 try:
     import keyring
 except ImportError:
@@ -54,27 +57,25 @@ except ImportError:
 # since importing the version info in setup.py tries to import this
 # entire module.
 try:
-    from .identity import *
+    from pyrax.identity import *
 
-    from . import exceptions as exc
-    from . import http
-    from . import version
+    #import pyrax.exceptions
 
-    from .cf_wrapper import client as _cf
+    from pyrax.cf_wrapper import client as _cf
     from novaclient import exceptions as _cs_exceptions
     from novaclient import auth_plugin as _cs_auth_plugin
     from novaclient.v1_1 import client as _cs_client
     from novaclient.v1_1.servers import Server as CloudServer
 
-    from .autoscale import AutoScaleClient
-    from .clouddatabases import CloudDatabaseClient
-    from .cloudloadbalancers import CloudLoadBalancerClient
-    from .cloudblockstorage import CloudBlockStorageClient
-    from .clouddns import CloudDNSClient
-    from .cloudnetworks import CloudNetworkClient
-    from .cloudmonitoring import CloudMonitorClient
-    from .image import ImageClient
-    from .queueing import QueueClient
+    from pyrax.autoscale import AutoScaleClient
+    from pyrax.clouddatabases import CloudDatabaseClient
+    from pyrax.cloudloadbalancers import CloudLoadBalancerClient
+    from pyrax.cloudblockstorage import CloudBlockStorageClient
+    from pyrax.clouddns import CloudDNSClient
+    from pyrax.cloudnetworks import CloudNetworkClient
+    from pyrax.cloudmonitoring import CloudMonitorClient
+    from pyrax.image import ImageClient
+    from pyrax.queueing import QueueClient
 except ImportError:
     # See if this is the result of the importing of version.py in setup.py
     callstack = inspect.stack()
@@ -109,7 +110,7 @@ _environment = "default"
 identity = None
 
 # Value to plug into the user-agent headers
-USER_AGENT = "pyrax/%s" % version.version
+USER_AGENT = "pyrax/1.8.0"
 
 # Do we output HTTP traffic for debugging?
 _http_debug = False
@@ -146,10 +147,10 @@ def _import_identity(import_str):
     try:
         import_str = _id_type(import_str)
         full_str = "pyrax.identity.%s" % import_str
-        return utils.import_class(full_str)
+        return import_class(full_str)
     except ImportError:
         pass
-    return utils.import_class(import_str)
+    return import_class(import_str)
 
 
 
@@ -212,11 +213,11 @@ class Settings(object):
             env = self.environment
         else:
             if env not in self._settings:
-                raise exc.EnvironmentNotFound("There is no environment named "
+                raise EnvironmentNotFound("There is no environment named "
                         "'%s'." % env)
         dct = self._settings[env]
         if key not in dct:
-            raise exc.InvalidSetting("The setting '%s' is not defined." % key)
+            raise InvalidSetting("The setting '%s' is not defined." % key)
         dct[key] = val
         if key == "identity_type":
             # If setting the identity_type, also change the identity_class.
@@ -241,7 +242,7 @@ class Settings(object):
 
     def _setEnvironment(self, val):
         if val not in self._settings:
-            raise exc.EnvironmentNotFound("The environment '%s' has not been "
+            raise EnvironmentNotFound("The environment '%s' has not been "
                     "defined." % val)
         if val != self.environment:
             self._environment = val
@@ -273,7 +274,7 @@ class Settings(object):
             cfg.read(config_file)
         except ConfigParser.MissingSectionHeaderError as e:
             # The file exists, but doesn't have the correct format.
-            raise exc.InvalidConfigurationFile(e)
+            raise InvalidConfigurationFile(e)
 
         def safe_get(section, option, default=None):
             try:
@@ -410,7 +411,7 @@ def _create_identity(id_type=None, username=None, password=None, tenant_id=None,
     else:
         cls = settings.get("identity_class")
     if not cls:
-        raise exc.IdentityClassNotDefined("No identity class has "
+        raise IdentityClassNotDefined("No identity class has "
                 "been defined for the current environment.")
     if verify_ssl is None:
         verify_ssl = get_setting("verify_ssl")
@@ -439,7 +440,7 @@ def _require_auth(fnc):
     def _wrapped(*args, **kwargs):
         if not identity.authenticated:
             msg = "Authentication required before calling '%s'." % fnc.__name__
-            raise exc.NotAuthenticated(msg)
+            raise NotAuthenticated(msg)
         return fnc(*args, **kwargs)
     return _wrapped
 
@@ -533,16 +534,16 @@ def keyring_auth(username=None, region=None, authenticate=True):
     """
     if not keyring:
         # Module not installed
-        raise exc.KeyringModuleNotInstalled("The 'keyring' Python module is "
+        raise KeyringModuleNotInstalled("The 'keyring' Python module is "
                 "not installed on this system.")
     if username is None:
         username = settings.get("keyring_username")
     if not username:
-        raise exc.KeyringUsernameMissing("No username specified for keyring "
+        raise KeyringUsernameMissing("No username specified for keyring "
                 "authentication.")
     password = keyring.get_password("pyrax", username)
     if password is None:
-        raise exc.KeyringPasswordNotFound("No password was found for the "
+        raise KeyringPasswordNotFound("No password was found for the "
                 "username '%s'." % username)
     set_credentials(username, password, region=region,
             authenticate=authenticate)

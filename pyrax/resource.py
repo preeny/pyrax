@@ -24,7 +24,7 @@ Base utilities to build API operation managers and objects on top of.
 import six
 
 import pyrax
-import pyrax.utils as utils
+from pyrax import pyrax_utils as utils
 
 
 class BaseResource(object):

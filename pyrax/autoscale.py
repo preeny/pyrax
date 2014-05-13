@@ -20,10 +20,10 @@
 import pyrax
 from pyrax.client import BaseClient
 from pyrax.cloudloadbalancers import CloudLoadBalancer
-import pyrax.exceptions as exc
+from pyrax.exceptions import InvalidLoadBalancer
 from pyrax.manager import BaseManager
 from pyrax.resource import BaseResource
-import pyrax.utils as utils
+from pyrax import pyrax_utils as utils
 
 
 
@@ -741,7 +741,7 @@ class ScalingGroupManager(BaseManager):
                 try:
                     instance = pyrax.cloud_loadbalancers.get(lb)
                 except Exception:
-                    raise exc.InvalidLoadBalancer("Received an invalid "
+                    raise InvalidLoadBalancer("Received an invalid "
                             "specification for a Load Balancer: '%s'" % lb)
                 lb_args.append({
                         "loadBalancerId": instance.id,

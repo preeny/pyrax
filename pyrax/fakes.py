@@ -61,7 +61,7 @@ from pyrax.base_identity import Endpoint
 from pyrax.base_identity import Service
 from pyrax.identity.rax_identity import RaxIdentity
 from pyrax.identity.keystone_identity import KeystoneIdentity
-import pyrax.utils as utils
+from pyrax import pyrax_utils as utils
 
 
 example_uri = "http://example.com"
